@@ -1,75 +1,171 @@
 import joblib
 import pandas as pd
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
-from typing import Literal
-from fastapi.middleware.cors import CORSMiddleware
+import streamlit as st
+from pathlib import Path
 
-model_data = joblib.load('mental_health_model.pkl')
+# --------------------------------------------------
+# Page configuration
+# --------------------------------------------------
+st.set_page_config(
+    page_title="Mental Health Score Predictor",
+    page_icon="🧠",
+    layout="centered"
+)
 
-model = model_data["model"]
-top_countries = model_data["top_countries"]
-app = FastAPI()
+# --------------------------------------------------
+# Load model
+# --------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "mental_health_model.pkl"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+
+@st.cache_resource
+def load_model():
+    model_data = joblib.load(MODEL_PATH)
+    return model_data["model"], model_data["top_countries"]
+
+
+model, top_countries = load_model()
+
+
+# --------------------------------------------------
+# Title
+# --------------------------------------------------
+st.title("🧠 Mental Health Score Predictor")
+st.write("Enter the student's information to predict the mental health score.")
+
+
+# --------------------------------------------------
+# Input fields
+# --------------------------------------------------
+age = st.number_input(
+    "Age",
+    min_value=10,
+    max_value=100,
+    value=18,
+    step=1
+)
+
+gender = st.selectbox(
+    "Gender",
+    ["Male", "Female"]
+)
+
+academic_level = st.selectbox(
+    "Academic Level",
+    ["Undergraduate", "Graduate", "High School"]
+)
+
+country = st.text_input(
+    "Country",
+    value="India"
+)
+
+most_used_platform = st.selectbox(
+    "Most Used Platform",
+    [
+        "Facebook",
+        "LinkedIn",
+        "Instagram",
+        "Snapchat",
+        "Twitter",
+        "YouTube",
+        "TikTok",
+        "LINE",
+        "KakaoTalk",
+        "VKontakte",
+        "WhatsApp",
+        "WeChat"
+    ]
+)
+
+purpose_of_use = st.selectbox(
+    "Purpose of Use",
+    [
+        "Networking",
+        "Education",
+        "Entertainment",
+        "News"
+    ]
+)
+
+avg_daily_usage_hours = st.number_input(
+    "Average Daily Usage Hours",
+    min_value=0.0,
+    max_value=24.0,
+    value=4.0,
+    step=0.1
+)
+
+daily_unlocks = st.number_input(
+    "Daily Unlocks",
+    min_value=0,
+    value=50,
+    step=1
+)
+
+study_hours = st.number_input(
+    "Study Hours",
+    min_value=0.0,
+    max_value=24.0,
+    value=4.0,
+    step=0.1
+)
+
+physical_activity_hours = st.number_input(
+    "Physical Activity Hours",
+    min_value=0.0,
+    max_value=24.0,
+    value=1.0,
+    step=0.1
+)
+
+sleep_hours_per_night = st.number_input(
+    "Sleep Hours Per Night",
+    min_value=0.0,
+    max_value=24.0,
+    value=7.0,
+    step=0.1
+)
+
+stress_level = st.selectbox(
+    "Stress Level",
+    ["Low", "Medium", "High", "Very High"]
 )
 
 
-#A first Pydantic Model
-class StudentData(BaseModel):
-    age                     : int = Field(..., ge=10, le=100)
-    gender                  : Literal['Male', 'Female']
-    country                 : str
-    academic_level          : Literal['Undergraduate', 'Graduate', 'High School']
-    most_used_platform      : Literal['Facebook', 'LinkedIn', 'Instagram', 'Snapchat','Twitter','YouTube', 'TikTok', 'LINE', 'KakaoTalk', 'VKontakte', 'WhatsApp','WeChat']
-    purpose_of_use          : Literal['Networking', 'Education', 'Entertainment', 'News']
-    avg_daily_usage_hours   : float = Field(..., ge=0, le=24)
-    daily_unlocks           : int   = Field(..., ge=0)
-    study_hours             : float = Field(..., ge=0, le=24)
-    physical_activity_hours : float = Field(..., ge=0, le=24)
-    sleep_hours_per_night   : float = Field(..., ge=0, le=24)
-    stress_level            : Literal['Medium', 'Low', 'Very High', 'High']
+# --------------------------------------------------
+# Prediction
+# --------------------------------------------------
+if st.button("🔮 Predict Mental Health Score", type="primary"):
 
+    country_group = (
+        country if country in top_countries else "Other"
+    )
 
+    input_row = pd.DataFrame([{
+        "Age": age,
+        "Gender": gender,
+        "Country": country,
+        "Academic_Level": academic_level,
+        "Most_Used_Platform": most_used_platform,
+        "Purpose_Of_Use": purpose_of_use,
+        "Avg_Daily_Usage_Hours": avg_daily_usage_hours,
+        "Daily_Unlocks": daily_unlocks,
+        "Study_Hours": study_hours,
+        "Physical_Activity_Hours": physical_activity_hours,
+        "Sleep_Hours_Per_Night": sleep_hours_per_night,
+        "Stress_Level": stress_level,
+        "grouped_country": country_group
+    }])
 
+    try:
+        prediction = model.predict(input_row)[0]
 
-# Describe what we send back
-class PredictionResponse(BaseModel):
-    predicted_mental_health_score:float
-    #6.777777 -> float
+        st.success(
+            f"Predicted Mental Health Score: **{float(prediction):.2f}**"
+        )
 
-
-
-
-@app.get('/')
-def greet():
-    return {'Welcome to Sheryians AI School Guys'}
-
-
-@app.post('/predict', response_model=PredictionResponse) #6.77777
-def predict(data: StudentData):
-   
-   country_group = data.country if data.country in top_countries else "Other"
-
-   input_row = pd.DataFrame([{
-        'Age'                       :data.age,
-        'Gender'                    :data.gender,
-        'Country'                   :data.country,
-        'Academic_Level'            :data.academic_level,
-        'Most_Used_Platform'        :data.most_used_platform,
-        'Purpose_Of_Use'            :data.purpose_of_use,
-        'Avg_Daily_Usage_Hours'     :data.avg_daily_usage_hours,
-        'Daily_Unlocks'             :data.daily_unlocks,
-        'Study_Hours'               :data.study_hours,
-        'Physical_Activity_Hours'   :data.physical_activity_hours,
-        'Sleep_Hours_Per_Night'     :data.sleep_hours_per_night,
-        'Stress_Level'              :data.stress_level,
-        'grouped_country'           :country_group
-   }])
-
-   prediction = model.predict(input_row)[0] #6.77
-   return PredictionResponse(predicted_mental_health_score=round(float(prediction),2))
+    except Exception as e:
+        st.error("Prediction failed.")
+        st.exception(e)
